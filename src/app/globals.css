@@ -1,0 +1,160 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --font-sans: var(--font-inter);
+  
+  --color-border: var(--border);
+  --color-input: var(--border);
+  --color-ring: var(--primary);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  --color-primary: var(--primary);
+  --color-primary-foreground: #FFFFFF;
+
+  --color-secondary: var(--background-subtle);
+  --color-secondary-foreground: var(--text-primary);
+
+  --color-destructive: var(--danger);
+  --color-destructive-foreground: #FFFFFF;
+
+  --color-muted: var(--background-subtle);
+  --color-muted-foreground: var(--text-muted);
+
+  --color-accent: var(--primary-light);
+  --color-accent-foreground: #FFFFFF;
+
+  --color-popover: var(--surface);
+  --color-popover-foreground: var(--text-primary);
+
+  --color-card: var(--surface);
+  --color-card-foreground: var(--text-primary);
+
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+
+  --color-surface: var(--surface);
+  --color-border-light: var(--border-light);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+  --color-background-subtle: var(--background-subtle);
+}
+
+/*
+  The default border color has changed to `currentColor` in Tailwind CSS v4,
+  so we've added these base styles back for old `border` class behavior.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentColor);
+  }
+}
+
+@layer base {
+  :root {
+    accent-color: #0D9488;
+    --primary: #0D9488;
+    --primary-light: #14B8A6;
+    --primary-gradient: linear-gradient(135deg, #0D9488, #10B981);
+    --background: #FFFFFF;
+    --background-subtle: #F9FAFB;
+    --surface: #FFFFFF;
+    --border: #E5E7EB;
+    --border-light: #F3F4F6;
+    --text-primary: #111827;
+    --text-secondary: #6B7280;
+    --text-muted: #9CA3AF;
+    --success: #10B981;
+    --warning: #F59E0B;
+    --danger: #EF4444;
+    --info: #3B82F6;
+    --foreground: #111827;
+    --radius: 0.75rem; /* 12px */
+  }
+
+  .dark {
+    /* For now, just map to same or dark variants if needed. The prompt didn't ask for dark mode right now, but standard shadcn uses it */
+    --background: #030712;
+    --foreground: #f9fafb;
+    --surface: #111827;
+    --background-subtle: #1f2937;
+    --border: #374151;
+    --border-light: #1f2937;
+    --text-primary: #f9fafb;
+    --text-secondary: #9ca3af;
+    --text-muted: #6b7280;
+  }
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  body {
+    background-color: var(--background);
+    color: var(--text-primary);
+    font-family: Arial, Helvetica, sans-serif;
+  }
+
+  /* Icône calendrier des <input type="date"> en couleur primaire */
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    filter: invert(44%) sepia(97%) saturate(400%) hue-rotate(142deg) brightness(88%);
+    opacity: 0.85;
+  }
+  input[type="date"]::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
+  }
+}
+
+/* ===== IMPRESSION / PDF ===== */
+@media print {
+  /* Masquer tout sauf la prévisualisation de facture */
+  header,
+  aside,
+  nav,
+  [data-sidebar],
+  .no-print {
+    display: none !important;
+  }
+
+  body {
+    background: white !important;
+  }
+
+  /* La prévisualisation occupe toute la page */
+  main {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+  }
+
+  [data-invoice-preview] {
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+  }
+}
+
+/* Utilities for gradient text or borders */
+.text-gradient {
+  background: var(--primary-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.bg-gradient-primary {
+  background: var(--primary-gradient);
+}

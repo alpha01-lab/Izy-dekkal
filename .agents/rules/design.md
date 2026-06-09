@@ -1,0 +1,39 @@
+---
+trigger: always_on
+---
+
+Vous travaillez sur l'application Dëkkal.
+Vous devez absolument respecter les règles du système de design définies ci-dessous pour toute nouvelle génération ou modification de code UI.
+
+## 1. Couleurs & Thème
+- Principal (Sarcelle/Teal) : `bg-primary` (#0D9488).
+- Principal Foncé : `bg-[#0D5C4A]` pour les boutons premium.
+- Couleurs du Sénégal : Vert (`#00853F`), Jaune (`#FDEF42`).
+- Arrière-plans : `bg-surface` (cartes blanches), `bg-background-subtle` (#F9FAFB pour l'arrière-plan des pages/survol des tableaux).
+- Texte : `text-text-primary` (#111827) pour les titres/valeurs, `text-text-secondary` (#6B7280) pour les libellés (labels), `text-text-muted` (#9CA3AF) pour les éléments désactivés/icônes.
+- Bordures : `border-border` (#E5E7EB), `border-primary/50` pour les mises en évidence (highlights).
+
+## 2. Formes & Ombres
+- Cartes/blocs principaux : `rounded-xl`.
+- Boutons/Champs de saisie : `rounded-lg`.
+- Badges/Avatars : `rounded-full`.
+- Ombres : `shadow-sm` sur toutes les cartes par défaut.
+
+## 3. Typographie
+- Titres de page : `text-2xl sm:text-3xl font-bold tracking-tight text-text-primary`.
+- Indicateurs Clés/Valeurs : `text-xl xl:text-2xl font-bold tracking-tight text-text-primary` (Éviter `truncate` sur les valeurs monétaires, laissez-les passer à la ligne).
+- Titres de carte : `text-lg font-bold`.
+
+## 4. Micro-Animations (CRITIQUE)
+TOUS les éléments interactifs doivent avoir des animations :
+- Cartes de statistiques : `transition-all duration-300 hover:shadow-lg hover:-translate-y-1 hover:border-primary/30`.
+- Boutons standards : `transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 active:scale-95 active:translate-y-0`.
+- Boutons icônes : `hover:scale-110 active:scale-95 hover:bg-primary/10 hover:text-primary`.
+- Liens "Voir tout" : `group-hover:translate-x-1` sur une flèche à l'intérieur.
+- Lignes de tableau : `hover:bg-background-subtle/50 transition-colors`. Actions masquées : `opacity-0 group-hover:opacity-100`.
+
+## 5. Responsivité
+- Grilles : Utiliser `grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6` pour les grilles de 4 éléments (NE PAS utiliser `lg:grid-cols-4` pour éviter l'écrasement du texte).
+- Tableaux : Envelopper dans `<div className="overflow-x-auto">`.
+- Débordement (Overflow) : Utiliser `min-w-0` sur les enfants flex et `truncate` pour éviter de casser la mise en page (sauf pour les grands nombres).
+- Menus mobiles : Doivent utiliser des superpositions (backdrop overlays) avec `fixed inset-0 bg-black/50 z-50`.
