@@ -1,7 +1,8 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { formatCFA, formatDate } from "@/lib/utils";
-import { mockSettings } from "@/data/mock";
+import { getSettings } from "@/actions/settings";
 import { Building2, Phone, Mail, MapPin } from "lucide-react";
 
 type InvoicePreviewProps = {
@@ -19,10 +20,10 @@ type InvoicePreviewProps = {
   client?: {
     id: string;
     name: string;
-    phone: string;
-    email: string;
-    address: string;
-    notes: string;
+    phone?: string;
+    email?: string;
+    address?: string;
+    notes?: string;
   };
 };
 
@@ -33,7 +34,6 @@ const statusConfig = {
   impayee:   { label: "IMPAYÉE",    className: "bg-red-50 text-red-700 border border-red-300" },
 };
 
-// Génère des lignes fictives représentatives pour la prévisualisation
 function generateMockLines(count: number, totalAmount: number) {
   const unitPrice = Math.round(totalAmount / 1.18 / count);
   return Array.from({ length: count }, (_, i) => ({
@@ -46,14 +46,40 @@ function generateMockLines(count: number, totalAmount: number) {
   }));
 }
 
+type ShopSettings = {
+  name: string;
+  address: string;
+  phone: string;
+  email: string;
+};
+
 export function InvoicePreview({ invoice, client }: InvoicePreviewProps) {
+  const [shop, setShop] = useState<ShopSettings | null>(null);
+
+  useEffect(() => {
+    getSettings().then((s) => {
+      if (s) {
+        setShop({
+          name: s.name ?? '',
+          address: s.address ?? '',
+          phone: s.phone ?? '',
+          email: s.email ?? '',
+        });
+      }
+    });
+  }, []);
+
   const cfg = statusConfig[invoice.status as keyof typeof statusConfig] ?? statusConfig.brouillon;
   const subTotal = Math.round(invoice.amount / 1.18);
   const tax = invoice.amount - subTotal;
   const mockLines = generateMockLines(invoice.items, invoice.amount);
 
   return (
-    <div id="invoice-preview" data-invoice-preview className="bg-surface rounded-xl shadow-sm border border-border p-8 print:shadow-none print:border-none print:rounded-none">
+    <div
+      id="invoice-preview"
+      data-invoice-preview
+      className="bg-surface rounded-xl shadow-sm border border-border p-8 print:shadow-none print:border-none print:rounded-none"
+    >
       {/* En-tête facture */}
       <div className="flex flex-col sm:flex-row justify-between gap-6 mb-10">
         {/* Info boutique */}
@@ -62,20 +88,28 @@ export function InvoicePreview({ invoice, client }: InvoicePreviewProps) {
             <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">
               <Building2 className="w-5 h-5 text-white" />
             </div>
-            <h2 className="text-xl font-bold text-text-primary">{mockSettings.name}</h2>
+            <h2 className="text-xl font-bold text-text-primary">
+              {shop?.name || '—'}
+            </h2>
           </div>
-          <div className="flex items-center gap-1.5 text-sm text-text-secondary">
-            <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
-            {mockSettings.address}
-          </div>
-          <div className="flex items-center gap-1.5 text-sm text-text-secondary">
-            <Phone className="w-3.5 h-3.5 flex-shrink-0" />
-            {mockSettings.phone}
-          </div>
-          <div className="flex items-center gap-1.5 text-sm text-text-secondary">
-            <Mail className="w-3.5 h-3.5 flex-shrink-0" />
-            {mockSettings.email}
-          </div>
+          {shop?.address && (
+            <div className="flex items-center gap-1.5 text-sm text-text-secondary">
+              <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
+              {shop.address}
+            </div>
+          )}
+          {shop?.phone && (
+            <div className="flex items-center gap-1.5 text-sm text-text-secondary">
+              <Phone className="w-3.5 h-3.5 flex-shrink-0" />
+              {shop.phone}
+            </div>
+          )}
+          {shop?.email && (
+            <div className="flex items-center gap-1.5 text-sm text-text-secondary">
+              <Mail className="w-3.5 h-3.5 flex-shrink-0" />
+              {shop.email}
+            </div>
+          )}
         </div>
 
         {/* Numéro & statut */}
@@ -85,10 +119,20 @@ export function InvoicePreview({ invoice, client }: InvoicePreviewProps) {
               {cfg.label}
             </span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-text-primary">{invoice.number}</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-text-primary">
+            {invoice.number}
+          </h1>
           <div className="text-sm text-text-secondary space-y-0.5">
-            <p>Date d&apos;émission : <span className="font-medium text-text-primary">{formatDate(invoice.date)}</span></p>
-            <p>Date d&apos;échéance : <span className="font-medium text-text-primary">{formatDate(invoice.dueDate)}</span></p>
+            <p>
+              Date d&apos;émission :{' '}
+              <span className="font-medium text-text-primary">{formatDate(invoice.date)}</span>
+            </p>
+            <p>
+              Date d&apos;échéance :{' '}
+              <span className="font-medium text-text-primary">
+                {invoice.dueDate ? formatDate(invoice.dueDate) : '—'}
+              </span>
+            </p>
           </div>
         </div>
       </div>
@@ -98,9 +142,13 @@ export function InvoicePreview({ invoice, client }: InvoicePreviewProps) {
 
       {/* Info client */}
       <div className="mb-8">
-        <p className="text-xs font-semibold text-text-muted uppercase tracking-widest mb-2">Facturé à</p>
+        <p className="text-xs font-semibold text-text-muted uppercase tracking-widest mb-2">
+          Facturé à
+        </p>
         <div className="bg-background-subtle rounded-xl p-4 border border-border">
-          <p className="font-bold text-text-primary text-lg">{client?.name ?? invoice.clientName}</p>
+          <p className="font-bold text-text-primary text-lg">
+            {client?.name ?? invoice.clientName}
+          </p>
           {client?.address && (
             <p className="text-sm text-text-secondary flex items-center gap-1.5 mt-1">
               <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
@@ -139,11 +187,15 @@ export function InvoicePreview({ invoice, client }: InvoicePreviewProps) {
               <tr key={line.id} className="hover:bg-background-subtle/50 transition-colors">
                 <td className="px-4 py-3.5 font-medium text-text-primary">{line.description}</td>
                 <td className="px-4 py-3.5 text-center text-text-secondary">{line.quantity}</td>
-                <td className="px-4 py-3.5 text-right text-text-secondary">{formatCFA(line.unitPrice)}</td>
+                <td className="px-4 py-3.5 text-right text-text-secondary">
+                  {formatCFA(line.unitPrice)}
+                </td>
                 <td className="px-4 py-3.5 text-right text-text-secondary">
                   {line.discount > 0 ? formatCFA(line.discount) : "—"}
                 </td>
-                <td className="px-4 py-3.5 text-right font-semibold text-text-primary">{formatCFA(line.total)}</td>
+                <td className="px-4 py-3.5 text-right font-semibold text-text-primary">
+                  {formatCFA(line.total)}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -169,9 +221,15 @@ export function InvoicePreview({ invoice, client }: InvoicePreviewProps) {
       </div>
 
       {/* Note de bas de page */}
-      <div className="mt-10 pt-6 border-t border-border text-center text-xs text-text-muted">
-        <p>Merci pour votre confiance — {mockSettings.name} · {mockSettings.email} · {mockSettings.phone}</p>
-      </div>
+      {shop && (
+        <div className="mt-10 pt-6 border-t border-border text-center text-xs text-text-muted">
+          <p>
+            Merci pour votre confiance — {shop.name}
+            {shop.email ? ` · ${shop.email}` : ''}
+            {shop.phone ? ` · ${shop.phone}` : ''}
+          </p>
+        </div>
+      )}
     </div>
   );
 }

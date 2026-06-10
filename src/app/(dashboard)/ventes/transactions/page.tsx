@@ -1,20 +1,28 @@
-import { ArrowLeftRight, TrendingUp, TrendingDown } from "lucide-react";
+import { ArrowLeftRight, TrendingUp } from "lucide-react";
 import { formatCFA, formatDate } from "@/lib/utils";
-import { mockInvoices } from "@/data/mock";
+import { getInvoices } from "@/actions/invoices";
 
-const transactions = mockInvoices
-  .filter(inv => inv.status === "payee")
-  .map(inv => ({
-    id: inv.id,
-    date: inv.date,
-    label: `Paiement — ${inv.number}`,
-    client: inv.clientName,
-    amount: inv.amount,
-    type: "credit" as const,
-  }));
+export default async function TransactionsPage() {
+  const allInvoices = await getInvoices().catch(() => []) ?? [];
 
-export default function TransactionsPage() {
+  const transactions = allInvoices
+    .filter(inv => inv.status === "payee")
+    .map(inv => ({
+      id: inv.id,
+      date: inv.date,
+      label: `Paiement — ${inv.number}`,
+      client: inv.client_name,
+      amount: inv.amount,
+    }));
+
   const total = transactions.reduce((a, t) => a + t.amount, 0);
+
+  const now = new Date();
+  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString().split('T')[0];
+  const monthTotal = transactions
+    .filter(t => t.date >= monthStart && t.date < monthEnd)
+    .reduce((a, t) => a + t.amount, 0);
 
   return (
     <div className="space-y-6">
@@ -31,8 +39,7 @@ export default function TransactionsPage() {
         </div>
         <div className="bg-surface border border-border rounded-xl p-5 shadow-sm">
           <p className="text-sm text-text-secondary mb-1">Ce mois</p>
-          <p className="text-xl font-bold text-text-primary">{formatCFA(total)}</p>
-          <p className="text-xs text-emerald-600 mt-1 font-medium">+12.4% vs mois dernier</p>
+          <p className="text-xl font-bold text-text-primary">{formatCFA(monthTotal)}</p>
         </div>
         <div className="bg-surface border border-border rounded-xl p-5 shadow-sm">
           <p className="text-sm text-text-secondary mb-1">Moyenne / transaction</p>

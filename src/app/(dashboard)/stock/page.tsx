@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { mockProducts, mockCategories } from '@/data/mock';
+import { useState, useEffect, useTransition } from 'react';
+import { getProducts, createProductAction, updateProductAction, deleteProductAction } from '@/actions/products';
 import { formatCFA } from '@/lib/utils';
 import { Plus, Search, Edit, Trash2, Package, X } from 'lucide-react';
 
@@ -10,19 +10,21 @@ type Product = {
   name: string;
   category: string;
   quantity: number;
-  alertThreshold: number;
-  purchasePrice: number;
-  salePrice: number;
+  alert_threshold: number;
+  purchase_price: number;
+  sale_price: number;
   unit: string;
   active: boolean;
 };
 
 type ModalMode = null | 'add' | 'edit' | 'delete';
 
+const CATEGORIES = ['Électronique', 'Alimentaire', 'Textile', 'Cosmétique', 'Divers'];
+
 const statusConfig = {
-  ok:     { label: 'En stock',  className: 'bg-emerald-50 text-emerald-700' },
-  alerte: { label: 'Alerte',    className: 'bg-amber-50 text-amber-700' },
-  rupture:{ label: 'Rupture',   className: 'bg-red-50 text-red-700' },
+  ok:      { label: 'En stock', className: 'bg-emerald-50 text-emerald-700' },
+  alerte:  { label: 'Alerte',   className: 'bg-amber-50 text-amber-700' },
+  rupture: { label: 'Rupture',  className: 'bg-red-50 text-red-700' },
 };
 
 function getStockStatus(qty: number, threshold: number) {
@@ -32,12 +34,12 @@ function getStockStatus(qty: number, threshold: number) {
 }
 
 const emptyForm = {
-  name: '', category: mockCategories[0]?.name ?? '', unit: 'pièce',
+  name: '', category: CATEGORIES[0], unit: 'pièce',
   quantity: '', alertThreshold: '', purchasePrice: '', salePrice: '',
 };
 
 export default function StockPage() {
-  const [products, setProducts] = useState<Product[]>(mockProducts);
+  const [products, setProducts] = useState<Product[]>([]);
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -45,31 +47,34 @@ export default function StockPage() {
   const [selected, setSelected] = useState<Product | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [formError, setFormError] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    startTransition(async () => {
+      const data = await getProducts();
+      setProducts(data ?? []);
+    });
+  }, []);
 
   const filtered = products.filter(p => {
     const matchSearch = p.name.toLowerCase().includes(search.toLowerCase());
-    const matchCategory = categoryFilter ? p.category === categoryFilter : true;
-    const matchStatus = statusFilter ? getStockStatus(p.quantity, p.alertThreshold) === statusFilter : true;
-    return matchSearch && matchCategory && matchStatus;
+    const matchCat = categoryFilter ? p.category === categoryFilter : true;
+    const matchStatus = statusFilter ? getStockStatus(p.quantity, p.alert_threshold) === statusFilter : true;
+    return matchSearch && matchCat && matchStatus;
   });
 
-  const totalValue = products.reduce((acc, p) => acc + p.quantity * p.purchasePrice, 0);
-  const inStock = products.filter(p => p.quantity > p.alertThreshold).length;
-  const alerts = products.filter(p => p.quantity > 0 && p.quantity <= p.alertThreshold).length;
-  const ruptures = products.filter(p => p.quantity === 0).length;
+  const totalValue = products.reduce((acc, p) => acc + p.quantity * p.purchase_price, 0);
+  const inStock   = products.filter(p => p.quantity > p.alert_threshold).length;
+  const alerts    = products.filter(p => p.quantity > 0 && p.quantity <= p.alert_threshold).length;
+  const ruptures  = products.filter(p => p.quantity === 0).length;
 
-  const openAdd = () => {
-    setForm({ ...emptyForm, category: mockCategories[0]?.name ?? '' });
-    setFormError('');
-    setModalMode('add');
-  };
+  const openAdd = () => { setForm(emptyForm); setFormError(''); setModalMode('add'); };
   const openEdit = (p: Product) => {
     setSelected(p);
     setForm({
       name: p.name, category: p.category, unit: p.unit,
-      quantity: String(p.quantity), alertThreshold: String(p.alertThreshold),
-      purchasePrice: String(p.purchasePrice / 100), salePrice: String(p.salePrice / 100),
+      quantity: String(p.quantity), alertThreshold: String(p.alert_threshold),
+      purchasePrice: String(p.purchase_price / 100), salePrice: String(p.sale_price / 100),
     });
     setFormError('');
     setModalMode('edit');
@@ -82,33 +87,34 @@ export default function StockPage() {
       setFormError('Nom, quantité et prix sont obligatoires.');
       return;
     }
-    setIsLoading(true);
-    setTimeout(() => {
-      const data: Product = {
-        id: selected?.id ?? `p_${Date.now()}`,
-        name: form.name.trim(),
-        category: form.category,
-        unit: form.unit,
-        quantity: parseInt(form.quantity) || 0,
-        alertThreshold: parseInt(form.alertThreshold) || 0,
-        purchasePrice: Math.round(parseFloat(form.purchasePrice) * 100),
-        salePrice: Math.round(parseFloat(form.salePrice) * 100),
-        active: true,
-      };
-      if (modalMode === 'add') {
-        setProducts(prev => [data, ...prev]);
-      } else if (modalMode === 'edit' && selected) {
-        setProducts(prev => prev.map(p => p.id === selected.id ? data : p));
-      }
-      setIsLoading(false);
+    setFormError('');
+    const formData = new FormData();
+    formData.append('name', form.name.trim());
+    formData.append('category', form.category);
+    formData.append('unit', form.unit);
+    formData.append('quantity', form.quantity);
+    formData.append('alertThreshold', form.alertThreshold || '5');
+    formData.append('purchasePrice', form.purchasePrice);
+    formData.append('salePrice', form.salePrice);
+
+    startTransition(async () => {
+      let result;
+      if (modalMode === 'add') result = await createProductAction(formData);
+      else if (modalMode === 'edit' && selected) result = await updateProductAction(selected.id, formData);
+      if (result?.error) { setFormError(result.error); return; }
+      const fresh = await getProducts();
+      setProducts(fresh ?? []);
       closeModal();
-    }, 400);
+    });
   };
 
   const handleDelete = () => {
     if (!selected) return;
-    setProducts(prev => prev.filter(p => p.id !== selected.id));
-    closeModal();
+    startTransition(async () => {
+      await deleteProductAction(selected.id);
+      setProducts(prev => prev.filter(p => p.id !== selected.id));
+      closeModal();
+    });
   };
 
   const f = (key: keyof typeof emptyForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
@@ -116,7 +122,6 @@ export default function StockPage() {
 
   return (
     <div className="space-y-6">
-      {/* En-tête */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-[#111827]">Gestion du Stock</h1>
@@ -124,21 +129,18 @@ export default function StockPage() {
             {products.length} produits · Valeur totale : <span className="font-semibold text-[#0D5C4A]">{formatCFA(totalValue)}</span>
           </p>
         </div>
-        <button
-          onClick={openAdd}
-          className="flex items-center gap-2 bg-[#0D5C4A] hover:bg-[#0a4a3a] text-white text-sm font-semibold px-4 py-2.5 rounded-lg transition-all duration-200 shadow-sm hover:shadow-md hover:-translate-y-0.5 active:scale-95"
-        >
+        <button onClick={openAdd}
+          className="flex items-center gap-2 bg-[#0D5C4A] hover:bg-[#0a4a3a] text-white text-sm font-semibold px-4 py-2.5 rounded-lg transition-all duration-200 shadow-sm hover:shadow-md hover:-translate-y-0.5 active:scale-95">
           <Plus className="w-4 h-4" strokeWidth={2.5} /> Nouveau produit
         </button>
       </div>
 
-      {/* Mini-stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
           { label: 'Total produits', value: products.length, color: 'text-[#111827]' },
-          { label: 'En stock',       value: inStock,          color: 'text-emerald-600' },
-          { label: 'En alerte',      value: alerts,           color: 'text-amber-600' },
-          { label: 'Rupture',        value: ruptures,         color: 'text-red-600' },
+          { label: 'En stock',       value: inStock,         color: 'text-emerald-600' },
+          { label: 'En alerte',      value: alerts,          color: 'text-amber-600' },
+          { label: 'Rupture',        value: ruptures,        color: 'text-red-600' },
         ].map(card => (
           <div key={card.label} className="bg-white border border-[#E5E7EB] rounded-xl p-4 shadow-sm">
             <p className="text-xs text-[#6B7280] mb-1">{card.label}</p>
@@ -147,7 +149,6 @@ export default function StockPage() {
         ))}
       </div>
 
-      {/* Tableau */}
       <div className="bg-white border border-[#E5E7EB] rounded-xl shadow-sm">
         <div className="flex flex-col sm:flex-row gap-3 p-4 border-b border-[#E5E7EB]">
           <div className="relative flex-1">
@@ -158,7 +159,7 @@ export default function StockPage() {
           <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}
             className="text-sm border border-[#E5E7EB] rounded-lg px-3 py-2 text-[#374151] focus:outline-none focus:ring-2 focus:ring-[#0D9488]/20 focus:border-[#0D9488]">
             <option value="">Toutes catégories</option>
-            {mockCategories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+            {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
           <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
             className="text-sm border border-[#E5E7EB] rounded-lg px-3 py-2 text-[#374151] focus:outline-none focus:ring-2 focus:ring-[#0D9488]/20 focus:border-[#0D9488]">
@@ -186,9 +187,9 @@ export default function StockPage() {
             </thead>
             <tbody className="divide-y divide-[#F3F4F6]">
               {filtered.length > 0 ? filtered.map(product => {
-                const margin = product.salePrice - product.purchasePrice;
-                const marginPct = Math.round((margin / product.purchasePrice) * 100);
-                const status = getStockStatus(product.quantity, product.alertThreshold);
+                const margin = product.sale_price - product.purchase_price;
+                const marginPct = product.purchase_price > 0 ? Math.round((margin / product.purchase_price) * 100) : 0;
+                const status = getStockStatus(product.quantity, product.alert_threshold);
                 const cfg = statusConfig[status];
                 return (
                   <tr key={product.id} className="group hover:bg-[#F9FAFB] transition-colors">
@@ -209,9 +210,9 @@ export default function StockPage() {
                         {product.quantity}
                       </span>
                     </td>
-                    <td className="px-5 py-4 text-center text-[#9CA3AF]">{product.alertThreshold}</td>
-                    <td className="px-5 py-4 text-[#6B7280]">{formatCFA(product.purchasePrice)}</td>
-                    <td className="px-5 py-4 font-semibold text-[#111827]">{formatCFA(product.salePrice)}</td>
+                    <td className="px-5 py-4 text-center text-[#9CA3AF]">{product.alert_threshold}</td>
+                    <td className="px-5 py-4 text-[#6B7280]">{formatCFA(product.purchase_price)}</td>
+                    <td className="px-5 py-4 font-semibold text-[#111827]">{formatCFA(product.sale_price)}</td>
                     <td className="px-5 py-4">
                       <span className={`text-sm font-semibold ${marginPct >= 20 ? 'text-emerald-600' : 'text-[#6B7280]'}`}>
                         +{marginPct}%
@@ -222,10 +223,10 @@ export default function StockPage() {
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => openEdit(product)} className="p-1.5 text-[#9CA3AF] hover:text-[#0D5C4A] hover:bg-[#F0FDF9] rounded-lg transition-colors hover:scale-110 active:scale-95" title="Modifier">
+                        <button onClick={() => openEdit(product)} className="p-1.5 text-[#9CA3AF] hover:text-[#0D5C4A] hover:bg-[#F0FDF9] rounded-lg transition-colors" title="Modifier">
                           <Edit className="w-4 h-4" />
                         </button>
-                        <button onClick={() => openDelete(product)} className="p-1.5 text-[#9CA3AF] hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors hover:scale-110 active:scale-95" title="Supprimer">
+                        <button onClick={() => openDelete(product)} className="p-1.5 text-[#9CA3AF] hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Supprimer">
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
@@ -237,7 +238,7 @@ export default function StockPage() {
                   <td colSpan={9} className="px-5 py-16 text-center">
                     <div className="flex flex-col items-center gap-2 text-[#9CA3AF]">
                       <Package className="w-8 h-8 opacity-30" />
-                      <p className="text-sm">Aucun produit trouvé</p>
+                      <p className="text-sm">{isPending ? 'Chargement...' : 'Aucun produit trouvé'}</p>
                     </div>
                   </td>
                 </tr>
@@ -248,18 +249,13 @@ export default function StockPage() {
         <div className="px-5 py-3 border-t border-[#F3F4F6] text-xs text-[#9CA3AF]">{filtered.length} produit(s) affiché(s)</div>
       </div>
 
-      {/* ===== MODAL AJOUTER / MODIFIER ===== */}
       {(modalMode === 'add' || modalMode === 'edit') && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={closeModal}>
           <div className="bg-white rounded-xl shadow-xl border border-[#E5E7EB] w-full max-w-lg" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between p-6 border-b border-[#E5E7EB]">
               <div>
-                <h2 className="text-lg font-bold text-[#111827]">
-                  {modalMode === 'add' ? 'Nouveau produit' : 'Modifier le produit'}
-                </h2>
-                <p className="text-sm text-[#6B7280] mt-0.5">
-                  {modalMode === 'edit' ? selected?.name : 'Ajouter un produit au stock'}
-                </p>
+                <h2 className="text-lg font-bold text-[#111827]">{modalMode === 'add' ? 'Nouveau produit' : 'Modifier le produit'}</h2>
+                <p className="text-sm text-[#6B7280] mt-0.5">{modalMode === 'edit' ? selected?.name : 'Ajouter un produit au stock'}</p>
               </div>
               <button onClick={closeModal} className="p-2 text-[#9CA3AF] hover:text-[#111827] hover:bg-[#F3F4F6] rounded-lg transition-colors">
                 <X className="w-5 h-5" />
@@ -279,7 +275,7 @@ export default function StockPage() {
                   <label className="text-sm font-medium text-[#374151]">Catégorie</label>
                   <select value={form.category} onChange={f('category')}
                     className="w-full px-3 py-2.5 text-sm border border-[#E5E7EB] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0D9488]/20 focus:border-[#0D9488]">
-                    {mockCategories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                    {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
                 <div className="space-y-1.5">
@@ -323,8 +319,9 @@ export default function StockPage() {
                 <button onClick={closeModal} className="px-4 py-2 text-sm font-medium text-[#6B7280] border border-[#E5E7EB] rounded-lg hover:bg-[#F9FAFB] transition-all active:scale-95">
                   Annuler
                 </button>
-                <button onClick={handleSubmit} disabled={isLoading} className="px-4 py-2 text-sm font-medium text-white bg-[#0D5C4A] rounded-lg hover:bg-[#0a4a3a] hover:shadow-md transition-all active:scale-95 disabled:opacity-60">
-                  {isLoading ? 'Enregistrement...' : 'Enregistrer'}
+                <button onClick={handleSubmit} disabled={isPending}
+                  className="px-4 py-2 text-sm font-medium text-white bg-[#0D5C4A] rounded-lg hover:bg-[#0a4a3a] hover:shadow-md transition-all active:scale-95 disabled:opacity-60">
+                  {isPending ? 'Enregistrement...' : 'Enregistrer'}
                 </button>
               </div>
             </div>
@@ -332,7 +329,6 @@ export default function StockPage() {
         </div>
       )}
 
-      {/* ===== MODAL SUPPRIMER ===== */}
       {modalMode === 'delete' && selected && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={closeModal}>
           <div className="bg-white rounded-xl shadow-xl border border-[#E5E7EB] w-full max-w-sm" onClick={e => e.stopPropagation()}>
@@ -353,8 +349,9 @@ export default function StockPage() {
                 <button onClick={closeModal} className="px-4 py-2 text-sm font-medium text-[#6B7280] border border-[#E5E7EB] rounded-lg hover:bg-[#F9FAFB] transition-all active:scale-95">
                   Annuler
                 </button>
-                <button onClick={handleDelete} className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 hover:shadow-md transition-all active:scale-95">
-                  Supprimer
+                <button onClick={handleDelete} disabled={isPending}
+                  className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 hover:shadow-md transition-all active:scale-95 disabled:opacity-60">
+                  {isPending ? 'Suppression...' : 'Supprimer'}
                 </button>
               </div>
             </div>

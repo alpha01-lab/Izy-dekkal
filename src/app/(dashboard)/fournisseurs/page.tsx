@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { mockSuppliers } from '@/data/mock';
+import { useState, useEffect, useTransition } from 'react';
+import { getSuppliers, createSupplierAction, updateSupplierAction, deleteSupplierAction } from '@/actions/suppliers';
 import { Plus, Search, Edit, Trash2, Truck, Phone, Mail, MapPin, X } from 'lucide-react';
 
 type Supplier = {
@@ -18,13 +18,20 @@ type ModalMode = null | 'add' | 'edit' | 'delete';
 const emptyForm = { name: '', phone: '', email: '', address: '', notes: '' };
 
 export default function FournisseursPage() {
-  const [suppliers, setSuppliers] = useState<Supplier[]>(mockSuppliers);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [search, setSearch] = useState('');
   const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [selected, setSelected] = useState<Supplier | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [formError, setFormError] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    startTransition(async () => {
+      const data = await getSuppliers();
+      setSuppliers(data ?? []);
+    });
+  }, []);
 
   const filtered = suppliers.filter(s =>
     s.name.toLowerCase().includes(search.toLowerCase()) || s.phone.includes(search)
@@ -33,29 +40,35 @@ export default function FournisseursPage() {
   const openAdd = () => { setForm(emptyForm); setFormError(''); setModalMode('add'); };
   const openEdit = (s: Supplier) => { setSelected(s); setForm({ name: s.name, phone: s.phone, email: s.email, address: s.address, notes: s.notes }); setFormError(''); setModalMode('edit'); };
   const openDelete = (s: Supplier) => { setSelected(s); setModalMode('delete'); };
-  const closeModal = () => { setModalMode(null); setSelected(null); };
+  const closeModal = () => { setModalMode(null); setSelected(null); setFormError(''); };
 
   const handleSubmit = () => {
     if (!form.name.trim() || !form.phone.trim()) {
       setFormError('Le nom et le téléphone sont obligatoires.');
       return;
     }
-    setIsLoading(true);
-    setTimeout(() => {
-      if (modalMode === 'add') {
-        setSuppliers(prev => [{ ...form, id: `s_${Date.now()}` }, ...prev]);
-      } else if (modalMode === 'edit' && selected) {
-        setSuppliers(prev => prev.map(s => s.id === selected.id ? { ...s, ...form } : s));
-      }
-      setIsLoading(false);
+    setFormError('');
+    const formData = new FormData();
+    Object.entries(form).forEach(([k, v]) => formData.append(k, v));
+
+    startTransition(async () => {
+      let result;
+      if (modalMode === 'add') result = await createSupplierAction(formData);
+      else if (modalMode === 'edit' && selected) result = await updateSupplierAction(selected.id, formData);
+      if (result?.error) { setFormError(result.error); return; }
+      const fresh = await getSuppliers();
+      setSuppliers(fresh ?? []);
       closeModal();
-    }, 400);
+    });
   };
 
   const handleDelete = () => {
     if (!selected) return;
-    setSuppliers(prev => prev.filter(s => s.id !== selected.id));
-    closeModal();
+    startTransition(async () => {
+      await deleteSupplierAction(selected.id);
+      setSuppliers(prev => prev.filter(s => s.id !== selected.id));
+      closeModal();
+    });
   };
 
   const f = (key: keyof typeof emptyForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
@@ -63,21 +76,17 @@ export default function FournisseursPage() {
 
   return (
     <div className="space-y-6">
-      {/* En-tête */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-text-primary">Fournisseurs</h1>
           <p className="text-sm text-text-secondary mt-1">{suppliers.length} fournisseurs enregistrés</p>
         </div>
-        <button
-          onClick={openAdd}
-          className="flex items-center gap-2 bg-[#0D5C4A] hover:bg-[#0a4a3a] text-white text-sm font-semibold px-4 py-2.5 rounded-lg transition-all duration-200 shadow-sm hover:shadow-md hover:-translate-y-0.5 active:scale-95"
-        >
+        <button onClick={openAdd}
+          className="flex items-center gap-2 bg-[#0D5C4A] hover:bg-[#0a4a3a] text-white text-sm font-semibold px-4 py-2.5 rounded-lg transition-all duration-200 shadow-sm hover:shadow-md hover:-translate-y-0.5 active:scale-95">
           <Plus className="w-4 h-4" strokeWidth={2.5} /> Nouveau fournisseur
         </button>
       </div>
 
-      {/* Tableau */}
       <div className="bg-white border border-[#E5E7EB] rounded-xl shadow-sm">
         <div className="p-4 border-b border-[#E5E7EB]">
           <div className="relative max-w-sm">
@@ -110,15 +119,9 @@ export default function FournisseursPage() {
                       <span className="font-semibold text-[#111827]">{supplier.name}</span>
                     </div>
                   </td>
-                  <td className="px-5 py-4">
-                    <div className="flex items-center gap-1.5 text-[#6B7280]"><Phone className="w-3.5 h-3.5" />{supplier.phone}</div>
-                  </td>
-                  <td className="px-5 py-4">
-                    <div className="flex items-center gap-1.5 text-[#6B7280]"><Mail className="w-3.5 h-3.5" />{supplier.email || '—'}</div>
-                  </td>
-                  <td className="px-5 py-4">
-                    <div className="flex items-center gap-1.5 text-[#6B7280]"><MapPin className="w-3.5 h-3.5" />{supplier.address}</div>
-                  </td>
+                  <td className="px-5 py-4"><div className="flex items-center gap-1.5 text-[#6B7280]"><Phone className="w-3.5 h-3.5" />{supplier.phone}</div></td>
+                  <td className="px-5 py-4"><div className="flex items-center gap-1.5 text-[#6B7280]"><Mail className="w-3.5 h-3.5" />{supplier.email || '—'}</div></td>
+                  <td className="px-5 py-4"><div className="flex items-center gap-1.5 text-[#6B7280]"><MapPin className="w-3.5 h-3.5" />{supplier.address}</div></td>
                   <td className="px-5 py-4 text-[#9CA3AF] text-xs max-w-[180px] truncate">{supplier.notes || '—'}</td>
                   <td className="px-5 py-4">
                     <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -133,7 +136,9 @@ export default function FournisseursPage() {
                 </tr>
               )) : (
                 <tr>
-                  <td colSpan={6} className="px-5 py-16 text-center text-[#9CA3AF] text-sm">Aucun fournisseur trouvé</td>
+                  <td colSpan={6} className="px-5 py-16 text-center text-[#9CA3AF] text-sm">
+                    {isPending ? 'Chargement...' : 'Aucun fournisseur trouvé'}
+                  </td>
                 </tr>
               )}
             </tbody>
@@ -142,63 +147,40 @@ export default function FournisseursPage() {
         <div className="px-5 py-3 border-t border-[#F3F4F6] text-xs text-[#9CA3AF]">{filtered.length} fournisseur(s) affiché(s)</div>
       </div>
 
-      {/* ===== MODAL AJOUTER / MODIFIER ===== */}
       {(modalMode === 'add' || modalMode === 'edit') && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={closeModal}>
           <div className="bg-white rounded-xl shadow-xl border border-[#E5E7EB] w-full max-w-md" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between p-6 border-b border-[#E5E7EB]">
               <div>
-                <h2 className="text-lg font-bold text-[#111827]">
-                  {modalMode === 'add' ? 'Nouveau fournisseur' : 'Modifier le fournisseur'}
-                </h2>
-                <p className="text-sm text-[#6B7280] mt-0.5">
-                  {modalMode === 'edit' ? selected?.name : 'Remplissez les informations'}
-                </p>
+                <h2 className="text-lg font-bold text-[#111827]">{modalMode === 'add' ? 'Nouveau fournisseur' : 'Modifier le fournisseur'}</h2>
+                <p className="text-sm text-[#6B7280] mt-0.5">{modalMode === 'edit' ? selected?.name : 'Remplissez les informations'}</p>
               </div>
-              <button onClick={closeModal} className="p-2 text-[#9CA3AF] hover:text-[#111827] hover:bg-[#F3F4F6] rounded-lg transition-colors">
-                <X className="w-5 h-5" />
-              </button>
+              <button onClick={closeModal} className="p-2 text-[#9CA3AF] hover:text-[#111827] hover:bg-[#F3F4F6] rounded-lg transition-colors"><X className="w-5 h-5" /></button>
             </div>
             <div className="p-6 space-y-4">
               {formError && <p className="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{formError}</p>}
-
-              {[
+              {([
                 { key: 'name' as const, label: 'Nom / Raison sociale', required: true, placeholder: 'Ex: SONAC Alimentaire' },
                 { key: 'phone' as const, label: 'Téléphone', required: true, placeholder: '+221 33 123 45 67' },
                 { key: 'email' as const, label: 'Email', placeholder: 'contact@fournisseur.sn' },
                 { key: 'address' as const, label: 'Adresse', placeholder: 'Dakar, Zone Industrielle' },
-              ].map(field => (
+              ]).map(field => (
                 <div key={field.key} className="space-y-1.5">
-                  <label className="text-sm font-medium text-[#374151]">
-                    {field.label} {field.required && <span className="text-red-500">*</span>}
-                  </label>
-                  <input
-                    type="text"
-                    value={form[field.key]}
-                    onChange={f(field.key)}
-                    placeholder={field.placeholder}
-                    className="w-full px-3 py-2.5 text-sm border border-[#E5E7EB] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0D9488]/20 focus:border-[#0D9488]"
-                  />
+                  <label className="text-sm font-medium text-[#374151]">{field.label} {field.required && <span className="text-red-500">*</span>}</label>
+                  <input type="text" value={form[field.key]} onChange={f(field.key)} placeholder={field.placeholder}
+                    className="w-full px-3 py-2.5 text-sm border border-[#E5E7EB] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0D9488]/20 focus:border-[#0D9488]" />
                 </div>
               ))}
-
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-[#374151]">Notes</label>
-                <textarea
-                  rows={2}
-                  value={form.notes}
-                  onChange={f('notes')}
-                  placeholder="Conditions de paiement, délais, etc."
-                  className="w-full px-3 py-2.5 text-sm border border-[#E5E7EB] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0D9488]/20 focus:border-[#0D9488] resize-none"
-                />
+                <textarea rows={2} value={form.notes} onChange={f('notes')} placeholder="Conditions de paiement, délais, etc."
+                  className="w-full px-3 py-2.5 text-sm border border-[#E5E7EB] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0D9488]/20 focus:border-[#0D9488] resize-none" />
               </div>
-
               <div className="flex justify-end gap-3 pt-2 border-t border-[#E5E7EB]">
-                <button onClick={closeModal} className="px-4 py-2 text-sm font-medium text-[#6B7280] border border-[#E5E7EB] rounded-lg hover:bg-[#F9FAFB] transition-all active:scale-95">
-                  Annuler
-                </button>
-                <button onClick={handleSubmit} disabled={isLoading} className="px-4 py-2 text-sm font-medium text-white bg-[#0D5C4A] rounded-lg hover:bg-[#0a4a3a] hover:shadow-md transition-all active:scale-95 disabled:opacity-60">
-                  {isLoading ? 'Enregistrement...' : 'Enregistrer'}
+                <button onClick={closeModal} className="px-4 py-2 text-sm font-medium text-[#6B7280] border border-[#E5E7EB] rounded-lg hover:bg-[#F9FAFB] transition-all active:scale-95">Annuler</button>
+                <button onClick={handleSubmit} disabled={isPending}
+                  className="px-4 py-2 text-sm font-medium text-white bg-[#0D5C4A] rounded-lg hover:bg-[#0a4a3a] hover:shadow-md transition-all active:scale-95 disabled:opacity-60">
+                  {isPending ? 'Enregistrement...' : 'Enregistrer'}
                 </button>
               </div>
             </div>
@@ -206,7 +188,6 @@ export default function FournisseursPage() {
         </div>
       )}
 
-      {/* ===== MODAL SUPPRIMER ===== */}
       {modalMode === 'delete' && selected && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={closeModal}>
           <div className="bg-white rounded-xl shadow-xl border border-[#E5E7EB] w-full max-w-sm" onClick={e => e.stopPropagation()}>
@@ -224,11 +205,10 @@ export default function FournisseursPage() {
                 Supprimer <span className="font-semibold text-[#111827]">{selected.name}</span> ?
               </p>
               <div className="flex justify-end gap-3">
-                <button onClick={closeModal} className="px-4 py-2 text-sm font-medium text-[#6B7280] border border-[#E5E7EB] rounded-lg hover:bg-[#F9FAFB] transition-all active:scale-95">
-                  Annuler
-                </button>
-                <button onClick={handleDelete} className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 hover:shadow-md transition-all active:scale-95">
-                  Supprimer
+                <button onClick={closeModal} className="px-4 py-2 text-sm font-medium text-[#6B7280] border border-[#E5E7EB] rounded-lg hover:bg-[#F9FAFB] transition-all active:scale-95">Annuler</button>
+                <button onClick={handleDelete} disabled={isPending}
+                  className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 hover:shadow-md transition-all active:scale-95 disabled:opacity-60">
+                  {isPending ? 'Suppression...' : 'Supprimer'}
                 </button>
               </div>
             </div>
