@@ -8,7 +8,7 @@ import {
   BarChart3, Plus, ChevronDown, ChevronRight, BarChart2,
   X, Check, Zap, Star, Building2,
 } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Logo } from './logo';
 
 const navItems = [
@@ -229,15 +229,17 @@ export function Sidebar() {
     achats: achatsSectionActive,
     ventes: true,
   });
+  const [prevPathname, setPrevPathname] = useState(pathname);
 
-  useEffect(() => {
-    if (achatsPaths.some(p => matchPath(pathname, p))) {
-      setOpenSections(prev => ({ ...prev, achats: true }));
-    }
-    if (ventesPaths.some(p => matchPath(pathname, p))) {
-      setOpenSections(prev => ({ ...prev, ventes: true }));
-    }
-  }, [pathname]);
+  if (pathname !== prevPathname) {
+    setPrevPathname(pathname);
+    setOpenSections(prev => {
+      const next = { ...prev };
+      if (achatsPaths.some(p => matchPath(pathname, p))) next.achats = true;
+      if (ventesPaths.some(p => matchPath(pathname, p))) next.ventes = true;
+      return next;
+    });
+  }
 
   const toggleSection = (section: string) => {
     setOpenSections(prev => ({ ...prev, [section]: !prev[section] }));

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useTransition } from "react";
+import { toast } from "sonner";
 import { getClients, createClientAction, updateClientAction, deleteClientAction } from "@/actions/clients";
 import { ClientTable } from "@/components/clients/client-table";
 import { ClientForm } from "@/components/clients/client-form";
@@ -47,9 +48,10 @@ export default function ClientsPage() {
       } else if (modalMode === "edit" && selectedClient) {
         result = await updateClientAction(selectedClient.id, formData);
       }
-      if (result?.error) { setError(result.error); return; }
+      if (result?.error) { setError(result.error); toast.error(result.error); return; }
       const fresh = await getClients();
       setClients(fresh ?? []);
+      toast.success(modalMode === "add" ? "Client ajouté avec succès." : "Client modifié avec succès.");
       closeModal();
     });
   };
@@ -58,8 +60,9 @@ export default function ClientsPage() {
     if (!confirm(`Supprimer le client "${client.name}" ? Cette action est irréversible.`)) return;
     startTransition(async () => {
       const result = await deleteClientAction(client.id);
-      if (result?.error) { setError(result.error); return; }
+      if (result?.error) { setError(result.error); toast.error(result.error); return; }
       setClients(prev => prev.filter(c => c.id !== client.id));
+      toast.success("Client supprimé.");
     });
   };
 

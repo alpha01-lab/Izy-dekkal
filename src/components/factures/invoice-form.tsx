@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useTransition } from 'react';
+import { toast } from 'sonner';
 import { Plus, Trash2, Save, Send, AlertCircle } from 'lucide-react';
 import { getClients } from '@/actions/clients';
 import { getProducts } from '@/actions/products';
@@ -99,7 +100,8 @@ export function InvoiceForm() {
           discount: l.discount,
         })),
       });
-      if (result?.error) { setError(result.error); return; }
+      if (result?.error) { setError(result.error); toast.error(result.error); return; }
+      toast.success(status === 'brouillon' ? 'Facture enregistrée en brouillon.' : 'Facture validée et envoyée.');
       router.push('/factures');
     });
   };

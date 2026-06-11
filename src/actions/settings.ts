@@ -36,3 +36,35 @@ export async function updateSettingsAction(formData: FormData) {
   revalidatePath('/parametres')
   return { success: true }
 }
+
+export async function uploadLogoAction(formData: FormData) {
+  const supabase = await createClient()
+  const existing = await getSettings()
+  const userId = existing?.user_id
+  if (!userId) return { error: 'Non authentifié' }
+
+  const file = formData.get('file') as File | null
+  if (!file || file.size === 0) return { error: 'Aucun fichier sélectionné.' }
+  if (file.size > 2 * 1024 * 1024) return { error: 'Le fichier dépasse 2 Mo.' }
+  if (!file.type.startsWith('image/')) return { error: 'Le fichier doit être une image.' }
+
+  const ext = file.name.split('.').pop() || 'png'
+  const path = `${userId}/logo.${ext}`
+
+  const { error: uploadError } = await supabase.storage
+    .from('logos')
+    .upload(path, file, { upsert: true, contentType: file.type })
+  if (uploadError) return { error: uploadError.message }
+
+  const { data: { publicUrl } } = supabase.storage.from('logos').getPublicUrl(path)
+  const logoUrl = `${publicUrl}?t=${Date.now()}`
+
+  const { error } = await supabase
+    .from('settings')
+    .update({ logo_url: logoUrl, updated_at: new Date().toISOString() })
+    .eq('user_id', userId)
+
+  if (error) return { error: error.message }
+  revalidatePath('/parametres')
+  return { success: true, logoUrl }
+}

@@ -1,31 +1,36 @@
 'use client'
 
-import { useEffect, useState, useTransition } from 'react'
+import { Suspense, useEffect, useState, useTransition } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { PasswordInput } from '@/components/ui/password-input'
 
 export default function ResetPasswordPage() {
+  return (
+    <Suspense>
+      <ResetPasswordForm />
+    </Suspense>
+  )
+}
+
+function ResetPasswordForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [message, setMessage] = useState<{ type: 'error' | 'success'; text: string } | null>(null)
   const [isPending, startTransition] = useTransition()
-  const [ready, setReady] = useState(false)
+  const [ready, setReady] = useState(() => !searchParams.get('code'))
 
   useEffect(() => {
-    const supabase = createClient()
     const code = searchParams.get('code')
+    if (!code) return
 
-    if (code) {
-      supabase.auth.exchangeCodeForSession(code).then(({ error }) => {
-        if (error) {
-          setMessage({ type: 'error', text: "Le lien de réinitialisation est invalide ou a expiré. Demandez-en un nouveau." })
-        }
-        setReady(true)
-      })
-    } else {
+    const supabase = createClient()
+    supabase.auth.exchangeCodeForSession(code).then(({ error }) => {
+      if (error) {
+        setMessage({ type: 'error', text: "Le lien de réinitialisation est invalide ou a expiré. Demandez-en un nouveau." })
+      }
       setReady(true)
-    }
+    })
   }, [searchParams])
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {

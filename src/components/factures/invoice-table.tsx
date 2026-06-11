@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { getInvoices, updateInvoiceStatusAction } from "@/actions/invoices";
 import { formatCFA, formatDate } from "@/lib/utils";
 import { Plus, Search, FileText, Eye, Download, ChevronDown, Check } from "lucide-react";
@@ -74,9 +75,16 @@ export function InvoiceTable() {
   }, []);
 
   const handleStatusChange = (id: string, newStatus: InvoiceStatus) => {
+    const previous = invoices.find(inv => inv.id === id)?.status;
     setInvoices(prev => prev.map(inv => inv.id === id ? { ...inv, status: newStatus } : inv));
     startTransition(async () => {
-      await updateInvoiceStatusAction(id, newStatus);
+      const result = await updateInvoiceStatusAction(id, newStatus);
+      if (result?.error) {
+        toast.error(result.error);
+        if (previous) setInvoices(prev => prev.map(inv => inv.id === id ? { ...inv, status: previous } : inv));
+        return;
+      }
+      toast.success(`Statut mis à jour : ${statusConfig[newStatus].label}`);
     });
   };
 

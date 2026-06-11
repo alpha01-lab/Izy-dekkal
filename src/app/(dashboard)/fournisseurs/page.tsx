@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useTransition } from 'react';
+import { toast } from 'sonner';
 import { getSuppliers, createSupplierAction, updateSupplierAction, deleteSupplierAction } from '@/actions/suppliers';
 import { Plus, Search, Edit, Trash2, Truck, Phone, Mail, MapPin, X } from 'lucide-react';
 
@@ -55,9 +56,10 @@ export default function FournisseursPage() {
       let result;
       if (modalMode === 'add') result = await createSupplierAction(formData);
       else if (modalMode === 'edit' && selected) result = await updateSupplierAction(selected.id, formData);
-      if (result?.error) { setFormError(result.error); return; }
+      if (result?.error) { setFormError(result.error); toast.error(result.error); return; }
       const fresh = await getSuppliers();
       setSuppliers(fresh ?? []);
+      toast.success(modalMode === 'add' ? 'Fournisseur ajouté avec succès.' : 'Fournisseur modifié avec succès.');
       closeModal();
     });
   };
@@ -67,6 +69,7 @@ export default function FournisseursPage() {
     startTransition(async () => {
       await deleteSupplierAction(selected.id);
       setSuppliers(prev => prev.filter(s => s.id !== selected.id));
+      toast.success('Fournisseur supprimé.');
       closeModal();
     });
   };

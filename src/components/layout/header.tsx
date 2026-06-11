@@ -5,21 +5,21 @@ import { useState, useEffect, useTransition } from 'react';
 import { usePathname } from 'next/navigation';
 import { Sidebar } from './sidebar';
 import { createClient } from '@/lib/supabase/client';
-import { getSettings } from '@/actions/settings';
+import { useShopSettings } from '@/contexts/settings-context';
 
 export function Header() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [userEmail, setUserEmail] = useState('');
-  const [shopName, setShopName] = useState('');
+  const { settings } = useShopSettings();
   const pathname = usePathname();
+  const [prevPathname, setPrevPathname] = useState(pathname);
 
   useEffect(() => {
     const supabase = createClient();
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) setUserEmail(user.email ?? '');
     });
-    getSettings().then(s => { if (s?.name) setShopName(s.name); });
   }, []);
 
   function handleSignOut() {
@@ -30,9 +30,10 @@ export function Header() {
     });
   }
 
-  useEffect(() => {
+  if (pathname !== prevPathname) {
+    setPrevPathname(pathname);
     setIsMobileMenuOpen(false);
-  }, [pathname]);
+  }
 
   const displayName = userEmail
     ? userEmail.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
@@ -73,21 +74,26 @@ export function Header() {
           <div className="flex items-center gap-3 cursor-pointer">
             <div className="text-right hidden sm:block">
               <p className="text-sm font-semibold text-text-primary leading-tight">{displayName}</p>
-              <p className="text-xs text-text-secondary truncate max-w-[120px]">{shopName || 'Ma Boutique'}</p>
+              <p className="text-xs text-text-secondary truncate max-w-[120px]">{settings.name || 'Ma Boutique'}</p>
             </div>
             <div
               className="w-9 h-9 rounded-full bg-[#0E1420] flex items-center justify-center flex-shrink-0 shadow-sm overflow-hidden"
               title={userEmail}
             >
-              <svg viewBox="0 0 48 48" className="w-[22px] h-[22px]" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 36C17 36 20 32 21 26H27C28 32 31 36 36 36H12Z" fill="#00853F" />
-                <path d="M21 26.5L19 18L24 22L29 18L27 26.5H21Z" fill="#FDEF42" />
-                <path d="M19 18L14 12M19 18L21 12M24 22L24 12M29 18L27 12M29 18L34 12" stroke="#FDEF42" strokeWidth="2.5" strokeLinecap="round" />
-                <path d="M14 12L10 6M14 12L16 6M12 9L8 8M15 9L18 5" stroke="#E31B23" strokeWidth="2" strokeLinecap="round" />
-                <path d="M21 12L19 5M21 12L22 6M20 8L17 5M21.5 8L24 4" stroke="#E31B23" strokeWidth="2" strokeLinecap="round" />
-                <path d="M27 12L29 5M27 12L26 6M28 8L31 5M26.5 8L24 4" stroke="#E31B23" strokeWidth="2" strokeLinecap="round" />
-                <path d="M34 12L38 6M34 12L32 6M36 9L40 8M33 9L30 5" stroke="#E31B23" strokeWidth="2" strokeLinecap="round" />
-              </svg>
+              {settings.logoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={settings.logoUrl} alt="Logo de la boutique" className="w-full h-full object-cover" />
+              ) : (
+                <svg viewBox="0 0 48 48" className="w-[22px] h-[22px]" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M12 36C17 36 20 32 21 26H27C28 32 31 36 36 36H12Z" fill="#00853F" />
+                  <path d="M21 26.5L19 18L24 22L29 18L27 26.5H21Z" fill="#FDEF42" />
+                  <path d="M19 18L14 12M19 18L21 12M24 22L24 12M29 18L27 12M29 18L34 12" stroke="#FDEF42" strokeWidth="2.5" strokeLinecap="round" />
+                  <path d="M14 12L10 6M14 12L16 6M12 9L8 8M15 9L18 5" stroke="#E31B23" strokeWidth="2" strokeLinecap="round" />
+                  <path d="M21 12L19 5M21 12L22 6M20 8L17 5M21.5 8L24 4" stroke="#E31B23" strokeWidth="2" strokeLinecap="round" />
+                  <path d="M27 12L29 5M27 12L26 6M28 8L31 5M26.5 8L24 4" stroke="#E31B23" strokeWidth="2" strokeLinecap="round" />
+                  <path d="M34 12L38 6M34 12L32 6M36 9L40 8M33 9L30 5" stroke="#E31B23" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+              )}
             </div>
           </div>
 

@@ -219,3 +219,42 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 CREATE OR REPLACE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION handle_new_user();
+
+-- ============================================================
+-- FONCTION : ajuster la quantité en stock d'un produit
+-- Utilisée lors de la validation/annulation de factures
+-- et de la réception de bons de commande.
+-- SECURITY INVOKER (par défaut) : la RLS "products_own" continue
+-- de s'appliquer, le produit doit appartenir à l'utilisateur.
+-- ============================================================
+CREATE OR REPLACE FUNCTION adjust_product_quantity(p_product_id UUID, p_delta INTEGER)
+RETURNS VOID AS $$
+  UPDATE products
+  SET quantity = GREATEST(quantity + p_delta, 0), updated_at = NOW()
+  WHERE id = p_product_id;
+$$ LANGUAGE sql;
+
+-- ============================================================
+-- STOCKAGE : bucket "logos" pour les logos de boutique
+-- Lecture publique, écriture/màj/suppression réservées au
+-- propriétaire (chemin préfixé par son user_id).
+-- ============================================================
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('logos', 'logos', true)
+ON CONFLICT (id) DO NOTHING;
+
+CREATE POLICY "Logos publics en lecture"
+ON storage.objects FOR SELECT
+USING (bucket_id = 'logos');
+
+CREATE POLICY "Utilisateurs peuvent uploader leur logo"
+ON storage.objects FOR INSERT
+WITH CHECK (bucket_id = 'logos' AND auth.uid()::text = (storage.foldername(name))[1]);
+
+CREATE POLICY "Utilisateurs peuvent modifier leur logo"
+ON storage.objects FOR UPDATE
+USING (bucket_id = 'logos' AND auth.uid()::text = (storage.foldername(name))[1]);
+
+CREATE POLICY "Utilisateurs peuvent supprimer leur logo"
+ON storage.objects FOR DELETE
+USING (bucket_id = 'logos' AND auth.uid()::text = (storage.foldername(name))[1]);

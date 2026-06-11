@@ -1,8 +1,10 @@
 'use client';
 
 import { Building2, Phone, Mail, MapPin, Tag, Percent, Save, CheckCircle } from 'lucide-react';
-import { useState, useEffect, useTransition } from 'react';
-import { getSettings, updateSettingsAction } from '@/actions/settings';
+import { useState, useEffect, useRef, useTransition } from 'react';
+import { toast } from 'sonner';
+import { getSettings, updateSettingsAction, uploadLogoAction } from '@/actions/settings';
+import { useShopSettings } from '@/contexts/settings-context';
 
 type Settings = {
   name: string;
@@ -12,6 +14,7 @@ type Settings = {
   invoicePrefix: string;
   devise: string;
   tvaRate: number;
+  logoUrl: string;
 };
 
 const defaults: Settings = {
@@ -22,6 +25,7 @@ const defaults: Settings = {
   invoicePrefix: 'FAC',
   devise: 'FCFA',
   tvaRate: 18,
+  logoUrl: '',
 };
 
 export default function ParametresPage() {
@@ -29,6 +33,9 @@ export default function ParametresPage() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
   const [isPending, startTransition] = useTransition();
+  const [isUploadingLogo, startLogoUpload] = useTransition();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { updateSettings: updateShopSettings } = useShopSettings();
 
   useEffect(() => {
     startTransition(async () => {
@@ -42,6 +49,7 @@ export default function ParametresPage() {
           invoicePrefix: data.invoice_prefix ?? 'FAC',
           devise: data.devise ?? 'FCFA',
           tvaRate: data.tva_rate ?? 18,
+          logoUrl: data.logo_url ?? '',
         });
       }
     });
@@ -58,15 +66,39 @@ export default function ParametresPage() {
     formData.set('invoicePrefix', settings.invoicePrefix);
     formData.set('devise', settings.devise);
     formData.set('tvaRate', String(settings.tvaRate));
+    formData.set('logoUrl', settings.logoUrl);
     startTransition(async () => {
       const result = await updateSettingsAction(formData);
       if (result?.error) {
         setError(result.error);
+        toast.error(result.error);
       } else {
         setSaved(true);
+        updateShopSettings({ name: settings.name, logoUrl: settings.logoUrl });
+        toast.success('Paramètres sauvegardés.');
         setTimeout(() => setSaved(false), 3000);
       }
     });
+  };
+
+  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.set('file', file);
+    startLogoUpload(async () => {
+      const result = await uploadLogoAction(formData);
+      if (result?.error) {
+        toast.error(result.error);
+        return;
+      }
+      if (result?.logoUrl) {
+        setSettings(prev => ({ ...prev, logoUrl: result.logoUrl }));
+        updateShopSettings({ logoUrl: result.logoUrl });
+      }
+      toast.success('Logo mis à jour.');
+    });
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   return (
@@ -187,12 +219,29 @@ export default function ParametresPage() {
           <h2 className="text-base font-semibold text-[#111827]">Logo de la boutique</h2>
         </div>
         <div className="p-6 flex items-center gap-6">
-          <div className="w-20 h-20 rounded-xl bg-[#F3F4F6] border-2 border-dashed border-[#D1D5DB] flex items-center justify-center">
-            <Building2 className="w-8 h-8 text-[#D1D5DB]" />
+          <div className="w-20 h-20 rounded-xl bg-[#F3F4F6] border-2 border-dashed border-[#D1D5DB] flex items-center justify-center overflow-hidden">
+            {settings.logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={settings.logoUrl} alt="Logo de la boutique" className="w-full h-full object-cover" />
+            ) : (
+              <Building2 className="w-8 h-8 text-[#D1D5DB]" />
+            )}
           </div>
           <div>
-            <button className="text-sm font-medium text-[#0D5C4A] hover:underline">
-              Télécharger un logo
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleLogoChange}
+              className="hidden"
+              id="logo-upload"
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isUploadingLogo}
+              className="text-sm font-medium text-[#0D5C4A] hover:underline disabled:opacity-60"
+            >
+              {isUploadingLogo ? 'Téléchargement...' : 'Télécharger un logo'}
             </button>
             <p className="text-xs text-[#9CA3AF] mt-1">PNG, JPG · max 2 MB · recommandé 200×200px</p>
           </div>

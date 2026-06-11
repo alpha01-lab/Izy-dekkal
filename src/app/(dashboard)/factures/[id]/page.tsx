@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, use, useEffect, useTransition } from "react";
+import { Suspense, useState, use, useEffect, useTransition } from "react";
 import { notFound, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { toast } from "sonner";
 import { getInvoiceById, updateInvoiceStatusAction, deleteInvoiceAction } from "@/actions/invoices";
 import { InvoicePreview } from "@/components/factures/invoice-preview";
 import { ArrowLeft, Edit2, Trash2, Printer, ChevronRight, CheckCircle2, Send } from "lucide-react";
@@ -28,6 +29,14 @@ const statusColors: Record<string, string> = {
 };
 
 export default function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  return (
+    <Suspense>
+      <InvoiceDetail params={params} />
+    </Suspense>
+  );
+}
+
+function InvoiceDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -65,15 +74,24 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
   const handleStatusChange = () => {
     if (!canProgress) return;
     const newStatus = nextStatus;
+    const previous = status;
     setStatus(newStatus);
     startTransition(async () => {
-      await updateInvoiceStatusAction(id, newStatus);
+      const result = await updateInvoiceStatusAction(id, newStatus);
+      if (result?.error) {
+        toast.error(result.error);
+        setStatus(previous);
+        return;
+      }
+      toast.success(`Facture marquée comme ${statusLabels[newStatus]}.`);
     });
   };
 
   const handleDelete = () => {
     startTransition(async () => {
-      await deleteInvoiceAction(id);
+      const result = await deleteInvoiceAction(id);
+      if (result?.error) { toast.error(result.error); return; }
+      toast.success("Facture supprimée.");
       router.push("/factures");
     });
   };

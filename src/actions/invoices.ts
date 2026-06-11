@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { getSettings } from '@/actions/settings'
+import { adjustStockForItems } from '@/lib/stock'
 
 export async function getInvoices() {
   const supabase = await createClient()
@@ -87,6 +88,16 @@ export async function createInvoiceAction(payload: {
       }))
     )
     if (itemsError) return { error: itemsError.message }
+
+    // Une facture non-brouillon engage le stock immédiatement
+    if (payload.status !== 'brouillon') {
+      await adjustStockForItems(
+        supabase,
+        payload.items.map(item => ({ product_id: item.productId || null, quantity: item.quantity })),
+        -1
+      )
+      revalidatePath('/stock')
+    }
   }
 
   revalidatePath('/factures')
@@ -95,6 +106,27 @@ export async function createInvoiceAction(payload: {
 
 export async function updateInvoiceStatusAction(id: string, status: string) {
   const supabase = await createClient()
+
+  const { data: current, error: fetchError } = await supabase
+    .from('invoices')
+    .select('status, invoice_items(product_id, quantity)')
+    .eq('id', id)
+    .single()
+  if (fetchError) return { error: fetchError.message }
+
+  const wasDraft = current.status === 'brouillon'
+  const isDraft = status === 'brouillon'
+
+  // Une facture engage le stock dès qu'elle quitte le brouillon,
+  // et le restitue si elle y retourne.
+  if (wasDraft && !isDraft) {
+    await adjustStockForItems(supabase, current.invoice_items, -1)
+    revalidatePath('/stock')
+  } else if (!wasDraft && isDraft) {
+    await adjustStockForItems(supabase, current.invoice_items, 1)
+    revalidatePath('/stock')
+  }
+
   const { error } = await supabase
     .from('invoices')
     .update({ status, updated_at: new Date().toISOString() })
@@ -106,6 +138,18 @@ export async function updateInvoiceStatusAction(id: string, status: string) {
 
 export async function deleteInvoiceAction(id: string) {
   const supabase = await createClient()
+
+  const { data: invoice } = await supabase
+    .from('invoices')
+    .select('status, invoice_items(product_id, quantity)')
+    .eq('id', id)
+    .single()
+
+  if (invoice && invoice.status !== 'brouillon') {
+    await adjustStockForItems(supabase, invoice.invoice_items, 1)
+    revalidatePath('/stock')
+  }
+
   const { error } = await supabase.from('invoices').delete().eq('id', id)
   if (error) return { error: error.message }
   revalidatePath('/factures')

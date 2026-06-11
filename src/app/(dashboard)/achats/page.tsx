@@ -1,15 +1,25 @@
 'use client';
 
 import { useState, useEffect, useTransition } from 'react';
+import { toast } from 'sonner';
 import { getPurchaseOrders, createPurchaseOrderAction, updatePurchaseOrderStatusAction } from '@/actions/purchase-orders';
 import { getSuppliers } from '@/actions/suppliers';
+import { getProducts } from '@/actions/products';
 import { formatCFA, formatDate } from '@/lib/utils';
-import { Plus, Search, Eye, Truck, X, CheckCircle2, Clock, PackageCheck } from 'lucide-react';
+import { Plus, Search, Eye, Truck, X, CheckCircle2, Clock, PackageCheck, Trash2 } from 'lucide-react';
 
 const statusConfig = {
   en_attente: { label: 'En attente', className: 'bg-amber-50 text-amber-700' },
   partielle:  { label: 'Partielle',  className: 'bg-blue-50 text-blue-700' },
   recue:      { label: 'Reçue',      className: 'bg-emerald-50 text-emerald-700' },
+};
+
+type PurchaseOrderItem = {
+  id: string;
+  product_id: string | null;
+  product_name: string;
+  quantity: number;
+  unit_price: number;
 };
 
 type PurchaseOrder = {
@@ -22,30 +32,66 @@ type PurchaseOrder = {
   amount: number;
   status: string;
   notes: string;
+  purchase_order_items?: PurchaseOrderItem[];
 };
 
 type Supplier = { id: string; name: string };
+type Product = { id: string; name: string; purchase_price: number; unit: string };
 type ModalMode = null | 'create' | 'detail' | 'receive';
+
+type OrderLine = {
+  id: string;
+  productId: string;
+  productName: string;
+  quantity: number;
+  unitPrice: number;
+};
 
 export default function AchatsPage() {
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder | null>(null);
-  const [form, setForm] = useState({ supplierId: '', supplierName: '', date: new Date().toISOString().split('T')[0], expectedDate: '', amount: '', notes: '' });
+  const [form, setForm] = useState({ supplierId: '', supplierName: '', date: new Date().toISOString().split('T')[0], expectedDate: '', notes: '' });
+  const [lines, setLines] = useState<OrderLine[]>([]);
   const [formError, setFormError] = useState('');
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
     startTransition(async () => {
-      const [ordersData, suppliersData] = await Promise.all([getPurchaseOrders(), getSuppliers()]);
+      const [ordersData, suppliersData, productsData] = await Promise.all([getPurchaseOrders(), getSuppliers(), getProducts()]);
       setOrders(ordersData ?? []);
       setSuppliers(suppliersData ?? []);
+      setProducts(productsData ?? []);
       if (suppliersData?.[0]) setForm(f => ({ ...f, supplierId: suppliersData[0].id, supplierName: suppliersData[0].name }));
     });
   }, []);
+
+  const addLine = () => {
+    setLines(prev => [...prev, { id: Date.now().toString(), productId: '', productName: '', quantity: 1, unitPrice: 0 }]);
+  };
+
+  const removeLine = (id: string) => setLines(prev => prev.filter(l => l.id !== id));
+
+  const updateLine = (id: string, field: keyof OrderLine, value: string | number) => {
+    setLines(prev => prev.map(line => {
+      if (line.id !== id) return line;
+      const newLine = { ...line, [field]: value };
+      if (field === 'productId') {
+        const product = products.find(p => p.id === value);
+        if (product) {
+          newLine.unitPrice = product.purchase_price;
+          newLine.productName = product.name;
+        }
+      }
+      return newLine;
+    }));
+  };
+
+  const orderTotal = lines.reduce((sum, l) => sum + l.quantity * l.unitPrice, 0);
 
   const filtered = orders.filter(bc => {
     const matchSearch = bc.number.toLowerCase().includes(search.toLowerCase()) || bc.supplier_name.toLowerCase().includes(search.toLowerCase());
@@ -55,15 +101,20 @@ export default function AchatsPage() {
   const openDetail = (order: PurchaseOrder) => { setSelectedOrder(order); setModalMode('detail'); };
   const openReceive = (order: PurchaseOrder) => { setSelectedOrder(order); setModalMode('receive'); };
   const openCreate = () => {
-    setForm({ supplierId: suppliers[0]?.id ?? '', supplierName: suppliers[0]?.name ?? '', date: new Date().toISOString().split('T')[0], expectedDate: '', amount: '', notes: '' });
+    setForm({ supplierId: suppliers[0]?.id ?? '', supplierName: suppliers[0]?.name ?? '', date: new Date().toISOString().split('T')[0], expectedDate: '', notes: '' });
+    setLines([]);
     setFormError('');
     setModalMode('create');
   };
   const closeModal = () => { setModalMode(null); setSelectedOrder(null); };
 
   const handleCreate = () => {
-    if (!form.supplierId || !form.expectedDate || !form.amount) {
+    if (!form.supplierId || !form.expectedDate) {
       setFormError('Veuillez remplir tous les champs obligatoires.');
+      return;
+    }
+    if (lines.length === 0 || lines.some(l => !l.productId)) {
+      setFormError('Veuillez ajouter au moins un produit valide.');
       return;
     }
     setFormError('');
@@ -72,14 +123,20 @@ export default function AchatsPage() {
     formData.append('supplierName', form.supplierName);
     formData.append('date', form.date);
     formData.append('expectedDate', form.expectedDate);
-    formData.append('amount', form.amount);
     formData.append('notes', form.notes);
+    formData.append('items', JSON.stringify(lines.map(l => ({
+      productId: l.productId,
+      productName: l.productName,
+      quantity: l.quantity,
+      unitPrice: l.unitPrice,
+    }))));
 
     startTransition(async () => {
       const result = await createPurchaseOrderAction(formData);
-      if (result?.error) { setFormError(result.error); return; }
+      if (result?.error) { setFormError(result.error); toast.error(result.error); return; }
       const fresh = await getPurchaseOrders();
       setOrders(fresh ?? []);
+      toast.success('Bon de commande créé avec succès.');
       closeModal();
     });
   };
@@ -88,8 +145,10 @@ export default function AchatsPage() {
     if (!selectedOrder) return;
     const newStatus = partial ? 'partielle' : 'recue';
     startTransition(async () => {
-      await updatePurchaseOrderStatusAction(selectedOrder.id, newStatus);
+      const result = await updatePurchaseOrderStatusAction(selectedOrder.id, newStatus);
+      if (result?.error) { toast.error(result.error); return; }
       setOrders(prev => prev.map(o => o.id === selectedOrder.id ? { ...o, status: newStatus } : o));
+      toast.success(partial ? 'Réception partielle enregistrée. Stock mis à jour.' : 'Réception complète enregistrée. Stock mis à jour.');
       closeModal();
     });
   };
@@ -192,7 +251,7 @@ export default function AchatsPage() {
 
       {modalMode === 'create' && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={closeModal}>
-          <div className="bg-white rounded-xl shadow-xl border border-[#E5E7EB] w-full max-w-md" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-xl shadow-xl border border-[#E5E7EB] w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between p-6 border-b border-[#E5E7EB]">
               <div>
                 <h2 className="text-lg font-bold text-[#111827]">Nouveau bon de commande</h2>
@@ -229,10 +288,57 @@ export default function AchatsPage() {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-sm font-medium text-[#374151]">Montant (FCFA) <span className="text-red-500">*</span></label>
-                <input type="number" min="0" placeholder="ex: 150000" value={form.amount}
-                  onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
+                <label className="text-sm font-medium text-[#374151]">Notes</label>
+                <input type="text" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
                   className="w-full px-3 py-2.5 text-sm border border-[#E5E7EB] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0D9488]/20 focus:border-[#0D9488]" />
+              </div>
+
+              <div className="space-y-3 pt-2 border-t border-[#E5E7EB]">
+                <h3 className="text-sm font-semibold text-[#111827]">Articles commandés</h3>
+
+                {lines.map(line => {
+                  const product = products.find(p => p.id === line.productId);
+                  return (
+                    <div key={line.id} className="grid grid-cols-12 gap-2 items-center">
+                      <div className="col-span-5">
+                        <select value={line.productId} onChange={e => updateLine(line.id, 'productId', e.target.value)}
+                          className="w-full px-2.5 py-2 text-sm border border-[#E5E7EB] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0D9488]/20 focus:border-[#0D9488]">
+                          <option value="">Sélectionner un produit</option>
+                          {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </select>
+                      </div>
+                      <div className="col-span-2">
+                        <input type="number" min="1" value={line.quantity || ''}
+                          onChange={e => updateLine(line.id, 'quantity', Number(e.target.value))}
+                          placeholder="Qté"
+                          className="w-full px-2.5 py-2 text-sm border border-[#E5E7EB] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0D9488]/20 focus:border-[#0D9488]" />
+                      </div>
+                      <div className="col-span-3">
+                        <input type="number" min="0" value={line.unitPrice / 100 || ''}
+                          onChange={e => updateLine(line.id, 'unitPrice', Number(e.target.value) * 100)}
+                          placeholder="P.U. (FCFA)"
+                          className="w-full px-2.5 py-2 text-sm border border-[#E5E7EB] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0D9488]/20 focus:border-[#0D9488]" />
+                      </div>
+                      <div className="col-span-2 flex items-center justify-between gap-1">
+                        <span className="text-xs font-semibold text-[#111827] truncate">{formatCFA(line.quantity * line.unitPrice)}</span>
+                        <button onClick={() => removeLine(line.id)} className="p-1.5 text-[#9CA3AF] hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors active:scale-95">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                      {product && line.quantity < 1 && <p className="col-span-12 text-xs text-red-500">Quantité invalide</p>}
+                    </div>
+                  );
+                })}
+
+                <button onClick={addLine}
+                  className="flex items-center gap-2 text-sm font-medium text-[#0D5C4A] hover:bg-[#F0FDF9] transition-colors p-2 rounded-lg active:scale-95">
+                  <Plus className="w-4 h-4" /> Ajouter un produit
+                </button>
+
+                <div className="flex justify-between items-center pt-3 border-t border-[#E5E7EB]">
+                  <span className="text-sm font-semibold text-[#374151]">Montant total</span>
+                  <span className="text-lg font-bold text-[#111827]">{formatCFA(orderTotal)}</span>
+                </div>
               </div>
 
               <div className="flex justify-end gap-3 pt-2 border-t border-[#E5E7EB]">
@@ -282,6 +388,24 @@ export default function AchatsPage() {
                         <span className="font-bold text-[#111827] text-base">{formatCFA(selectedOrder.amount)}</span>
                       </div>
                     </div>
+
+                    {selectedOrder.purchase_order_items && selectedOrder.purchase_order_items.length > 0 && (
+                      <div className="space-y-2">
+                        <h3 className="text-sm font-semibold text-[#111827]">Articles</h3>
+                        <div className="divide-y divide-[#F3F4F6] border border-[#E5E7EB] rounded-xl overflow-hidden">
+                          {selectedOrder.purchase_order_items.map(item => (
+                            <div key={item.id} className="flex justify-between items-center px-4 py-2.5 text-sm">
+                              <div>
+                                <p className="font-medium text-[#111827]">{item.product_name}</p>
+                                <p className="text-xs text-[#9CA3AF]">{item.quantity} × {formatCFA(item.unit_price)}</p>
+                              </div>
+                              <span className="font-semibold text-[#111827]">{formatCFA(item.quantity * item.unit_price)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     {(selectedOrder.status === 'en_attente' || selectedOrder.status === 'partielle') && (
                       <button onClick={() => { closeModal(); openReceive(selectedOrder); }}
                         className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-all active:scale-95">

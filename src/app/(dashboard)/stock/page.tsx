@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useTransition } from 'react';
+import { toast } from 'sonner';
 import { getProducts, createProductAction, updateProductAction, deleteProductAction } from '@/actions/products';
 import { formatCFA } from '@/lib/utils';
 import { Plus, Search, Edit, Trash2, Package, X } from 'lucide-react';
@@ -101,9 +102,10 @@ export default function StockPage() {
       let result;
       if (modalMode === 'add') result = await createProductAction(formData);
       else if (modalMode === 'edit' && selected) result = await updateProductAction(selected.id, formData);
-      if (result?.error) { setFormError(result.error); return; }
+      if (result?.error) { setFormError(result.error); toast.error(result.error); return; }
       const fresh = await getProducts();
       setProducts(fresh ?? []);
+      toast.success(modalMode === 'add' ? 'Produit ajouté avec succès.' : 'Produit modifié avec succès.');
       closeModal();
     });
   };
@@ -113,6 +115,7 @@ export default function StockPage() {
     startTransition(async () => {
       await deleteProductAction(selected.id);
       setProducts(prev => prev.filter(p => p.id !== selected.id));
+      toast.success('Produit supprimé.');
       closeModal();
     });
   };

@@ -1,4 +1,4 @@
-import { BarChart3, FileText, Download, TrendingUp } from "lucide-react";
+import { FileText, Download, TrendingUp } from "lucide-react";
 import { formatCFA } from "@/lib/utils";
 import { getInvoices } from "@/actions/invoices";
 
